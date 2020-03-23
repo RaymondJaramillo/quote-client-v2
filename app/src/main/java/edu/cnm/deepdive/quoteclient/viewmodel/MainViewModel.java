@@ -12,6 +12,7 @@ import edu.cnm.deepdive.quoteclient.service.GoogleSignInService;
 import edu.cnm.deepdive.quoteclient.service.QuoteRepository;
 import io.reactivex.disposables.CompositeDisposable;
 import java.util.List;
+import java.util.UUID;
 
 public class MainViewModel extends ViewModel implements LifecycleObserver {
 
@@ -19,6 +20,7 @@ public class MainViewModel extends ViewModel implements LifecycleObserver {
   private MutableLiveData<Quote> daily;
   private MutableLiveData<List<Quote>> quotes;
   private MutableLiveData<List<Content>> contents;
+  private MutableLiveData<Quote> quote;
   private final MutableLiveData<Throwable> throwable;
   private final QuoteRepository repository;
   private CompositeDisposable pending;
@@ -29,6 +31,7 @@ public class MainViewModel extends ViewModel implements LifecycleObserver {
     random = new MutableLiveData<>();
     daily = new MutableLiveData<>();
     quotes = new MutableLiveData<>();
+    quote = new MutableLiveData<>();
     contents = new MutableLiveData<>();
     throwable = new MutableLiveData<>();
     refreshDaily();
@@ -48,12 +51,17 @@ public class MainViewModel extends ViewModel implements LifecycleObserver {
     return quotes;
   }
 
+
   public LiveData<List<Content>> getContents() {
     return contents;
   }
 
   public LiveData<Throwable> getThrowable() {
     return throwable;
+  }
+
+  public LiveData<Quote> getQuote() {
+    return quote;
   }
 
   public void refreshRandom() {
@@ -115,6 +123,40 @@ public class MainViewModel extends ViewModel implements LifecycleObserver {
         })
         .addOnFailureListener(throwable::postValue);
   }
+
+  public void save(Quote quote) {
+    throwable.setValue(null);
+    GoogleSignInService.getInstance().refresh()
+        .addOnSuccessListener((account) -> {
+          pending.add(
+              repository.save(account.getIdToken(), quote)
+                  .subscribe(
+                      () -> {
+                        refreshDaily();
+                        refreshContents();
+                        refreshQuotes();
+                      },
+                      throwable::postValue
+                  )
+          );
+        })
+        .addOnFailureListener(throwable::postValue);
+  }
+
+  public void setQuoteId(UUID id) {
+    throwable.setValue(null);
+    GoogleSignInService.getInstance().refresh()
+        .addOnSuccessListener(
+            (account) -> pending.add(
+                repository.get(account.getIdToken(), id)
+                .subscribe(
+                    quote::postValue,
+                    throwable::postValue
+                )
+            )
+        ).addOnFailureListener(throwable::postValue);
+  }
+
 
   @OnLifecycleEvent(Event.ON_STOP)
   private void clearPending() {
